@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import base58
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -18,9 +19,14 @@ if not BOT_TOKEN:
 if not PRIVATE_KEY:
     raise ValueError("SOLANA_PRIVATE_KEY is missing")
 
-keypair = Keypair.from_bytes(bytes(json.loads(PRIVATE_KEY)))
-wallet_address = str(keypair.pubkey())
+private_key_str = PRIVATE_KEY.strip()
 
+if private_key_str.startswith("["):
+    keypair = Keypair.from_bytes(bytes(json.loads(private_key_str)))
+else:
+    keypair = Keypair.from_bytes(base58.b58decode(private_key_str))
+
+wallet_address = str(keypair.pubkey())
 client = Client("https://api.mainnet-beta.solana.com")
 
 
@@ -85,10 +91,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button))
-
     app.run_polling()
 
 
