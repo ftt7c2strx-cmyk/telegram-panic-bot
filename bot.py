@@ -12,10 +12,10 @@ from solders.pubkey import Pubkey
 from solders.system_program import transfer, TransferParams
 from solders.transaction import Transaction
 
-from spl.token.instructions import transfer_checked
-from spl.token.instructions import TransferCheckedParams
-from spl.token.constants import TOKEN_PROGRAM_ID
+from spl.token.instructions import transfer_checked, TransferCheckedParams
 from spl.token.instructions import get_associated_token_address
+from spl.token.instructions import create_associated_token_account
+from spl.token.constants import TOKEN_PROGRAM_ID
 
 logging.basicConfig(level=logging.INFO)
 
@@ -25,8 +25,13 @@ DESTINATION = os.getenv("DESTINATION_WALLET")
 
 RPC = "https://api.mainnet-beta.solana.com"
 
-USDT_MINT = Pubkey.from_string("Es9vMFrzaCERd5Qf1J3LJ1mHh8VdNDo7Yw1sVn7kLPM")
-USDC_MINT = Pubkey.from_string("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wE9R8K3Ue1F")
+USDT_MINT = Pubkey.from_string(
+"Es9vMFrzaCERd5Qf1J3LJ1mHh8VdNDo7Yw1sVn7kLPM"
+)
+
+USDC_MINT = Pubkey.from_string(
+"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+)
 
 client = AsyncClient(RPC)
 
@@ -45,7 +50,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "panic ready",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
@@ -76,62 +81,82 @@ async def panic_sequence(delay):
 
 async def send_token(mint):
 
-    owner = keypair.pubkey()
+    try:
 
-    source = get_associated_token_address(owner, mint)
-    dest = get_associated_token_address(destination, mint)
+        owner = keypair.pubkey()
 
-    balance = await client.get_token_account_balance(source)
+        source = get_associated_token_address(owner, mint)
+        dest = get_associated_token_address(destination, mint)
 
-    if balance.value.amount == "0":
-        return
+        info = await client.get_account_info(dest)
 
-    amount = int(balance.value.amount)
+        tx = Transaction()
 
-    decimals = balance.value.decimals
+        if info.value is None:
+            tx.add(
+                create_associated_token_account(
+                    payer=owner,
+                    owner=destination,
+                    mint=mint
+                )
+            )
 
-    tx = Transaction()
+        balance = await client.get_token_account_balance(source)
 
-    tx.add(
-        transfer_checked(
-            TransferCheckedParams(
-                program_id=TOKEN_PROGRAM_ID,
-                source=source,
-                mint=mint,
-                dest=dest,
-                owner=owner,
-                amount=amount,
-                decimals=decimals,
-                signers=[],
+        if balance.value.amount == "0":
+            return
+
+        amount = int(balance.value.amount)
+        decimals = balance.value.decimals
+
+        tx.add(
+            transfer_checked(
+                TransferCheckedParams(
+                    program_id=TOKEN_PROGRAM_ID,
+                    source=source,
+                    mint=mint,
+                    dest=dest,
+                    owner=owner,
+                    amount=amount,
+                    decimals=decimals,
+                    signers=[]
+                )
             )
         )
-    )
 
-    await client.send_transaction(tx, keypair)
+        await client.send_transaction(tx, keypair)
+
+    except Exception:
+        pass
 
 
 async def send_sol():
 
-    balance = await client.get_balance(keypair.pubkey())
+    try:
 
-    lamports = balance.value - 5000
+        balance = await client.get_balance(keypair.pubkey())
 
-    if lamports <= 0:
-        return
+        lamports = balance.value - 5000
 
-    tx = Transaction()
+        if lamports <= 0:
+            return
 
-    tx.add(
-        transfer(
-            TransferParams(
-                from_pubkey=keypair.pubkey(),
-                to_pubkey=destination,
-                lamports=lamports,
+        tx = Transaction()
+
+        tx.add(
+            transfer(
+                TransferParams(
+                    from_pubkey=keypair.pubkey(),
+                    to_pubkey=destination,
+                    lamports=lamports
+                )
             )
         )
-    )
 
-    await client.send_transaction(tx, keypair)
+        await client.send_transaction(tx, keypair)
+
+    except Exception:
+        pass
 
 
 def main():
