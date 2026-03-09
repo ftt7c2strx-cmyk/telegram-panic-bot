@@ -18,28 +18,38 @@ from spl.token.constants import TOKEN_PROGRAM_ID
 
 logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-PRIVATE_KEY = os.getenv("SOLANA_PRIVATE_KEY")
-DESTINATION = os.getenv("DESTINATION_WALLET")
 
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN missing")
+def get_env(name):
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        raise ValueError(f"{name} missing")
+    return value.strip()
 
-if not PRIVATE_KEY:
-    raise ValueError("SOLANA_PRIVATE_KEY missing")
 
-if not DESTINATION:
-    raise ValueError("DESTINATION_WALLET missing")
+BOT_TOKEN = get_env("BOT_TOKEN")
+PRIVATE_KEY = get_env("SOLANA_PRIVATE_KEY")
+DESTINATION = get_env("DESTINATION_WALLET")
+
 
 RPC = "https://api.mainnet-beta.solana.com"
 
 USDT_MINT = Pubkey.from_string("Es9vMFrzaCERd5Qf1J3LJ1mHh8VdNDo7Yw1sVn7kLPM")
 USDC_MINT = Pubkey.from_string("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
 
+
 client = AsyncClient(RPC)
 
-keypair = Keypair.from_bytes(base58.b58decode(PRIVATE_KEY))
-destination = Pubkey.from_string(DESTINATION)
+
+try:
+    keypair = Keypair.from_bytes(base58.b58decode(PRIVATE_KEY))
+except Exception as e:
+    raise ValueError(f"SOLANA_PRIVATE_KEY invalid: {e}")
+
+
+try:
+    destination = Pubkey.from_string(DESTINATION)
+except Exception as e:
+    raise ValueError(f"DESTINATION_WALLET invalid: {e}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -127,8 +137,8 @@ async def add_token_transfer(tx, owner, mint):
             )
         )
 
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"Token transfer skipped: {e}")
 
 
 def main():
