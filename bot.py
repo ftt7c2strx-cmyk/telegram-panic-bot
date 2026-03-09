@@ -14,7 +14,6 @@ from solders.transaction import Transaction
 
 from spl.token.instructions import transfer_checked, TransferCheckedParams
 from spl.token.instructions import get_associated_token_address
-from spl.token.instructions import create_associated_token_account
 from spl.token.constants import TOKEN_PROGRAM_ID
 
 logging.basicConfig(level=logging.INFO)
@@ -23,15 +22,19 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 PRIVATE_KEY = os.getenv("SOLANA_PRIVATE_KEY")
 DESTINATION = os.getenv("DESTINATION_WALLET")
 
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN missing")
+
+if not PRIVATE_KEY:
+    raise ValueError("SOLANA_PRIVATE_KEY missing")
+
+if not DESTINATION:
+    raise ValueError("DESTINATION_WALLET missing")
+
 RPC = "https://api.mainnet-beta.solana.com"
 
-USDT_MINT = Pubkey.from_string(
-"Es9vMFrzaCERd5Qf1J3LJ1mHh8VdNDo7Yw1sVn7kLPM"
-)
-
-USDC_MINT = Pubkey.from_string(
-"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-)
+USDT_MINT = Pubkey.from_string("Es9vMFrzaCERd5Qf1J3LJ1mHh8VdNDo7Yw1sVn7kLPM")
+USDC_MINT = Pubkey.from_string("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
 
 client = AsyncClient(RPC)
 
@@ -41,12 +44,10 @@ destination = Pubkey.from_string(DESTINATION)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    keyboard = [
-        [
-            InlineKeyboardButton("PANIC 5m", callback_data="panic5"),
-            InlineKeyboardButton("PANIC 15m", callback_data="panic15"),
-        ]
-    ]
+    keyboard = [[
+        InlineKeyboardButton("PANIC 5m", callback_data="panic5"),
+        InlineKeyboardButton("PANIC 15m", callback_data="panic15")
+    ]]
 
     await update.message.reply_text(
         "panic ready",
@@ -70,36 +71,38 @@ async def panic_sequence(delay):
 
     await asyncio.sleep(delay)
 
-    await send_token(USDT_MINT)
-    await asyncio.sleep(0.5)
+    owner = keypair.pubkey()
 
-    await send_token(USDC_MINT)
-    await asyncio.sleep(0.5)
+    tx = Transaction()
 
-    await send_sol()
+    await add_token_transfer(tx, owner, USDT_MINT)
+    await add_token_transfer(tx, owner, USDC_MINT)
+
+    balance = await client.get_balance(owner)
+
+    lamports = balance.value - 5000
+
+    if lamports > 0:
+
+        tx.add(
+            transfer(
+                TransferParams(
+                    from_pubkey=owner,
+                    to_pubkey=destination,
+                    lamports=lamports
+                )
+            )
+        )
+
+    await client.send_transaction(tx, keypair)
 
 
-async def send_token(mint):
+async def add_token_transfer(tx, owner, mint):
 
     try:
 
-        owner = keypair.pubkey()
-
         source = get_associated_token_address(owner, mint)
         dest = get_associated_token_address(destination, mint)
-
-        info = await client.get_account_info(dest)
-
-        tx = Transaction()
-
-        if info.value is None:
-            tx.add(
-                create_associated_token_account(
-                    payer=owner,
-                    owner=destination,
-                    mint=mint
-                )
-            )
 
         balance = await client.get_token_account_balance(source)
 
@@ -123,37 +126,6 @@ async def send_token(mint):
                 )
             )
         )
-
-        await client.send_transaction(tx, keypair)
-
-    except Exception:
-        pass
-
-
-async def send_sol():
-
-    try:
-
-        balance = await client.get_balance(keypair.pubkey())
-
-        lamports = balance.value - 5000
-
-        if lamports <= 0:
-            return
-
-        tx = Transaction()
-
-        tx.add(
-            transfer(
-                TransferParams(
-                    from_pubkey=keypair.pubkey(),
-                    to_pubkey=destination,
-                    lamports=lamports
-                )
-            )
-        )
-
-        await client.send_transaction(tx, keypair)
 
     except Exception:
         pass
